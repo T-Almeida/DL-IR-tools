@@ -9,6 +9,6 @@ setup(
     author='Tiago Almeida',
     author_email='tiagomeloalmeida@ua.pt',
     keywords=['nir','tokenization'],
-    install_requires=["fasttext=0.9.2"]
+    install_requires=["fasttext==0.9.1"],
     url='https://github.com/T-Almeida/DL-IR-tools'
 )

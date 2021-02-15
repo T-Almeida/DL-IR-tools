@@ -15,23 +15,28 @@ def create_filter_query_function():
 
 
 def try_function_n_times(f, num_tries):
+    last_excepetion = None
     for _ in range(num_tries):
         try:
             f()
             break
         except Exception as e:
+            last_excepetion = e
             # fail but lets try again
             print("function",f.__name__,"fail",_,"times")
             
     if _==num_tries-1:
-        raise e # excedeed number of tries, so raise the exception
+        if last_excepetion is not None:
+            raise last_excepetion # excedeed number of tries, so raise the exception
+        else:
+            raise RuntimeError("Number of calls were exceeded")
 
         
 # auxiliar function
 def change_bm25_parameters(k1, b, index_name, es, num_tries=5):
     
     def close_index():
-        es.indices.close(index=index_name)
+        es.indices.close(index=index_name, request_timeout=200)
         
     try_function_n_times(close_index, num_tries)
     
@@ -46,12 +51,12 @@ def change_bm25_parameters(k1, b, index_name, es, num_tries=5):
                     }
                 }
             }
-        })
+        }, request_timeout=200)
         
     try_function_n_times(update_settings, num_tries)
     
     def open_index():
-        es.indices.open(index=index_name)
+        es.indices.open(index=index_name, request_timeout=200)
         
     try_function_n_times(open_index, num_tries)
     

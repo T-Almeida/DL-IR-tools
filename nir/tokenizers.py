@@ -35,13 +35,18 @@ def fitTokenizeJob(proc_id, articles, _class, merge_tokenizer_path, properties):
     print("[Process-{}] Ended".format(proc_id))
 
 
-def tokenizeJob(proc_id, texts, _class, merge_tokenizer_path, properties, kwargs):
+def tokenizeJob(proc_id, texts, _class, tokenazer_info, merge_tokenizer_path, properties, kwargs):
     print("[Process-{}] Started articles size {}".format(proc_id, len(texts)))
 
     sys.stdout.flush()
     # load tokenizer
-    tokenizer = _class.load_from_json(**properties)
+    tokenizer = _class(cache_folder=tokenazer_info["cache_folder"],
+                       prefix_name=tokenazer_info["prefix_name"])
 
+    tokenizer.word_index = tokenazer_info["word_index"]
+    tokenizer.oov_token = tokenazer_info["oov_token"]
+    tokenizer.num_words = tokenazer_info["num_words"]
+    
     # ALL THREADS RUN THIS
     tokenized_texts = tokenizer.tokenize_texts(texts, **kwargs)
     del texts
@@ -121,7 +126,6 @@ class BaseTokenizer:
         if kwargs:
             print('[WARNING] Unrecognized keyword arguments: ' + str(kwargs.keys()))
 
-
     def tokenizer(self):
         raise NotImplementedError("The function tokenizer must be implemented by a subclass")
 
@@ -134,7 +138,7 @@ class BaseTokenizer:
     
     def get_vocabulary(self):
         if self.num_words is not None:
-            return [k for k,v in self.word_index.items() if v<self.num_words]
+            return [k for k,v in self.word_index.items() if v<(self.num_words)]
         else:
             return list(self.word_index.keys())
    
@@ -279,7 +283,9 @@ class BaseTokenizer:
         # note that index 0 is reserved, never assigned to an existing word
         self.word_index = dict(
             list(zip(sorted_voc, list(range(1, len(sorted_voc) + 1)))))
+        
 
+            
         # calculate the num_words based on min_word_frequency
         if self.min_word_frequency is not None:
             for i,w in enumerate(sorted_voc):
@@ -362,7 +368,7 @@ class BaseTokenizer:
                 articles.extend(self._tokenizer_multiprocess(texts, n_process=n_process))
             return articles
         else:
-            return self._tokenizer_multiprocess(texts, n_process=n_process)
+            return self._tokenizer_multiprocess(gen_texts, n_process=n_process)
         
             
     def _tokenizer_multiprocess(self, texts, n_process=None, **kwargs):
@@ -372,11 +378,21 @@ class BaseTokenizer:
         
         merge_tokenizer_path = tempfile.mkdtemp()
         tokenized_texts = []
+        
+        w_index = {w:i for w,i in self.word_index.items() if i<=self.num_words}
+        
+        tokenazer_info = {
+            "num_words": self.num_words,
+            "oov_token": self.oov_token,
+            "word_index": w_index,
+            'cache_folder': self.cache_folder,
+            'prefix_name': self.prefix_name,
+        }
 
         try:
             # initialization of the process
             def tokenizer_process_init(proc_id, texts):
-                return Process(target=tokenizeJob, args=(proc_id, texts, self.__class__, merge_tokenizer_path, self.get_config(), kwargs))
+                return Process(target=tokenizeJob, args=(proc_id, texts, self.__class__, tokenazer_info, merge_tokenizer_path, self.get_config(), kwargs))
             
             # multiprocess loop
             itter = 1000000
@@ -559,7 +575,7 @@ class Regex(BaseTokenizer):
                 t_config["queries_sw"] = kwargs["queries_sw"]
                 t_config["articles_sw"] = kwargs["articles_sw"]
                 t_config["sw_file"] = kwargs["sw_file"]
-            return Regex(**t_config)
+            return Regex(**t_config)   
         
 class BioCleanTokenizer(BaseTokenizer):
     
@@ -578,7 +594,7 @@ class BioCleanTokenizer(BaseTokenizer):
         else:
             self.articles_sw = articles_sw
 
-        self.pattern = re.compile('[.,?;*!%^&_+():-\[\]{}]')
+        self.pattern = re.compile('[.,?;*!%^&_+():-\[\]{}]') 
 
         self.init_name()
         
